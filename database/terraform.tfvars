@@ -17,7 +17,7 @@ engine = "aurora-mysql"
 
 engine_version = "8.0.mysql_aurora.3.08.0"
 
-instance_class = "db.t4g.medium"
+instance_class = "db.r6g.large"
 
 
 ############################################

@@ -21,7 +21,49 @@ data "terraform_remote_state" "secondary" {
     region = "us-east-1"
   }
 }
+############################################
+# Secondary Region KMS Key
+############################################
 
+data "aws_kms_key" "secondary_rds" {
+  provider = aws.secondary
+  key_id   = "alias/aws/rds"
+}
+############################################
+# Database Credentials
+############################################
+
+resource "random_password" "master" {
+  length  = 20
+  special = true
+
+  override_special = "!#$%^&*()-_=+[]{}<>?"
+}
+
+############################################
+# Secrets Manager
+############################################
+
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name = "${var.name}-${var.environment}-db-credentials"
+
+  # This project is built and torn down every session — the default 30-day
+  # recovery window would block re-creating a same-named secret on the next apply.
+  recovery_window_in_days = 0
+
+  tags = var.tags
+}
+
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+
+  secret_string = jsonencode({
+    username = "admin"
+    password = random_password.master.result
+    endpoint = aws_rds_cluster.primary.endpoint
+  })
+}
 
 ############################################
 # Database Security Groups
@@ -116,6 +158,7 @@ resource "aws_rds_global_cluster" "this" {
 
   engine         = var.engine
   engine_version = var.engine_version
+  storage_encrypted = true
 }
 
 
@@ -140,9 +183,9 @@ resource "aws_rds_cluster" "primary" {
     aws_security_group.primary_db.id
   ]
 
-  manage_master_user_password = true
-
   master_username = "admin"
+
+  master_password = random_password.master.result
 
   storage_encrypted = true
 
@@ -193,6 +236,8 @@ resource "aws_rds_cluster" "secondary" {
   ]
 
   storage_encrypted = true
+
+  kms_key_id = data.aws_kms_key.secondary_rds.arn
 
   skip_final_snapshot = true
 
