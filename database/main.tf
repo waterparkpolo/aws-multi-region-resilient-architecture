@@ -21,6 +21,7 @@ data "terraform_remote_state" "secondary" {
     region = "us-east-1"
   }
 }
+
 ############################################
 # Secondary Region KMS Key
 ############################################
@@ -29,6 +30,7 @@ data "aws_kms_key" "secondary_rds" {
   provider = aws.secondary
   key_id   = "alias/aws/rds"
 }
+
 ############################################
 # Database Credentials
 ############################################
@@ -47,13 +49,10 @@ resource "random_password" "master" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name = "${var.name}-${var.environment}-db-credentials"
 
-  # This project is built and torn down every session — the default 30-day
-  # recovery window would block re-creating a same-named secret on the next apply.
   recovery_window_in_days = 0
 
   tags = var.tags
 }
-
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
@@ -62,6 +61,32 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
     username = "admin"
     password = random_password.master.result
     endpoint = aws_rds_cluster.primary.endpoint
+  })
+}
+
+############################################
+# Secondary Region Secrets Manager
+############################################
+
+resource "aws_secretsmanager_secret" "db_credentials_secondary" {
+  provider = aws.secondary
+
+  name = "${var.name}-${var.environment}-secondary-db-credentials"
+
+  recovery_window_in_days = 0
+
+  tags = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials_secondary" {
+  provider = aws.secondary
+
+  secret_id = aws_secretsmanager_secret.db_credentials_secondary.id
+
+  secret_string = jsonencode({
+    username = "admin"
+    password = random_password.master.result
+    endpoint = aws_rds_cluster.secondary.endpoint
   })
 }
 
@@ -95,7 +120,6 @@ resource "aws_security_group" "primary_db" {
   tags = var.tags
 }
 
-
 resource "aws_security_group" "secondary_db" {
   provider = aws.secondary
 
@@ -124,7 +148,6 @@ resource "aws_security_group" "secondary_db" {
   tags = var.tags
 }
 
-
 ############################################
 # DB Subnet Groups
 ############################################
@@ -137,7 +160,6 @@ resource "aws_db_subnet_group" "primary" {
   tags = var.tags
 }
 
-
 resource "aws_db_subnet_group" "secondary" {
   provider = aws.secondary
 
@@ -148,7 +170,6 @@ resource "aws_db_subnet_group" "secondary" {
   tags = var.tags
 }
 
-
 ############################################
 # Aurora Global Database
 ############################################
@@ -156,11 +177,10 @@ resource "aws_db_subnet_group" "secondary" {
 resource "aws_rds_global_cluster" "this" {
   global_cluster_identifier = var.global_cluster_identifier
 
-  engine         = var.engine
-  engine_version = var.engine_version
+  engine            = var.engine
+  engine_version    = var.engine_version
   storage_encrypted = true
 }
-
 
 ############################################
 # Primary Aurora Cluster (Writer)
@@ -196,7 +216,6 @@ resource "aws_rds_cluster" "primary" {
   tags = var.tags
 }
 
-
 resource "aws_rds_cluster_instance" "primary" {
 
   identifier = "${var.name}-${var.environment}-primary-instance"
@@ -211,7 +230,6 @@ resource "aws_rds_cluster_instance" "primary" {
 
   tags = var.tags
 }
-
 
 ############################################
 # Secondary Aurora Cluster (Read Replica)
@@ -247,7 +265,6 @@ resource "aws_rds_cluster" "secondary" {
 
   tags = var.tags
 }
-
 
 resource "aws_rds_cluster_instance" "secondary" {
 

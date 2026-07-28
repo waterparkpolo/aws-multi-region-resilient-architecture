@@ -92,3 +92,8 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+variable "db_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing this region's DB credentials + endpoint"
+  type        = string
+  default     = null
+}

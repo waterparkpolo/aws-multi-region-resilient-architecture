@@ -1,4 +1,70 @@
 ############################################
+# IAM Role for EC2 Instances
+############################################
+
+resource "aws_iam_role" "ec2" {
+  name = "${var.name}-${var.environment}-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+############################################
+# IAM Policy - Read Database Secret
+############################################
+
+resource "aws_iam_role_policy" "secrets_manager" {
+  count = var.db_secret_arn != null ? 1 : 0
+
+  name = "${var.name}-${var.environment}-secrets-policy"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadDatabaseSecret"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = var.db_secret_arn
+      }
+    ]
+  })
+}
+
+############################################
+# EC2 Instance Profile
+############################################
+
+resource "aws_iam_instance_profile" "ec2" {
+  name = "${var.name}-${var.environment}-instance-profile"
+
+  role = aws_iam_role.ec2.name
+
+  tags = var.tags
+}
+############################################
+# Data Sources
+############################################
+
+data "aws_region" "current" {}
+
+############################################
 # ALB Security Group
 ############################################
 
@@ -144,49 +210,20 @@ resource "aws_launch_template" "this" {
 
   image_id = var.ami_id
 
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ec2.name
+  }
+
   instance_type = var.instance_type
 
   vpc_security_group_ids = [
     aws_security_group.ec2.id
   ]
 
-  user_data = base64encode(<<-EOF
-#!/bin/bash
-
-dnf update -y
-
-dnf install nginx -y
-
-systemctl start nginx
-systemctl enable nginx
-
-TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-
-REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
-
-INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-
-cat <<HTML > /usr/share/nginx/html/index.html
-<!DOCTYPE html>
-<html>
-<head>
-<title>Project 5 Resilient Architecture</title>
-</head>
-
-<body>
-
-<h1>Project 5 Multi-Region Failover Test</h1>
-
-<p>Region: $REGION</p>
-
-<p>Instance ID: $INSTANCE_ID</p>
-
-</body>
-</html>
-HTML
-
-EOF
-  )
+  user_data = base64encode(templatefile("${path.module}/templates/user_data.sh.tpl", {
+  db_secret_arn = var.db_secret_arn != null ? var.db_secret_arn : ""
+  aws_region    = data.aws_region.current.name
+}))
 
   tag_specifications {
     resource_type = "instance"

@@ -56,3 +56,19 @@ output "secondary_db_security_group_id" {
   description = "Secondary database security group ID"
   value       = aws_security_group.secondary_db.id
 }
+############################################
+# Secrets Manager Outputs
+############################################
+
+output "primary_secret_arn" {
+  description = "ARN of the primary region database secret"
+
+  value = aws_secretsmanager_secret.db_credentials.arn
+}
+
+
+output "secondary_secret_arn" {
+  description = "ARN of the secondary region database secret"
+
+  value = aws_secretsmanager_secret.db_credentials_secondary.arn
+}
