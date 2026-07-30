@@ -25,18 +25,19 @@ A revenue-critical web application needs to survive a full regional AWS outage. 
 ```
 modules/
   vpc/        — reusable VPC module (public/private subnets, IGW, NAT, route tables)
-  alb-asg/    — ALB + Auto Scaling Group + security groups + launch template
+  alb-asg/    — ALB + Auto Scaling Group + security groups + launch template + IAM
 regions/
   us-east-1/  — primary region root config
   us-west-2/  — secondary region root config
 database/     — Aurora Global Database (single root, dual AWS providers — see below)
+dns/          — Route 53 private-zone failover routing (single root, global service)
 ```
 
-Each region is an **independent root config with its own state**, since VPC and ALB/ASG resources in one region have zero coupling with the other. The database layer is different: Aurora Global Database is one logical resource spanning both regions with a strict creation-order dependency (secondary cluster can't join until the primary/global cluster exists), so it's built as a **single root with two provider aliases** instead — letting Terraform's own dependency graph enforce correct ordering, rather than trying to coordinate two independently-applied states.
+Each region is an **independent root config with its own state**, since VPC and ALB/ASG resources in one region have zero coupling with the other. The database layer is different: Aurora Global Database is one logical resource spanning both regions with a strict creation-order dependency (secondary cluster can't join until the primary/global cluster exists), so it's built as a **single root with two provider aliases** instead — letting Terraform's own dependency graph enforce correct ordering, rather than trying to coordinate two independently-applied states. Route 53 is different again: it's a global service, so `dns/` needs only one provider.
 
 ## Status
 
-🚧 In progress. VPC and ALB/ASG layers built, applied, and independently verified (AWS CLI, not just `terraform apply` exit codes). Database layer in progress. Route 53 failover routing and the actual failure-injection test are next. Full postmortem will land here once the failover test is complete.
+✅ Complete. Every layer built, applied, and independently verified via AWS CLI — not just `terraform apply` exit codes. Ran a real failure-injection test: killed the primary application tier, watched Route 53 detect it in ~2 minutes across all 15 global checker locations, triggered the Aurora Global Database promotion, and verified both durability (pre-failure data survived) and writability (a fresh post-promotion instance's write succeeded). Full results in `FAILOVER_TEST.md`. Full writeup of the build — architecture decisions and every real bug hit along the way — in `POSTMORTEM.md`.
 
 ## Cost discipline
 
