@@ -30,6 +30,19 @@ data "aws_ami" "amazon_linux_2023" {
     ]
   }
 }
+############################################
+# Database Remote State
+############################################
+
+data "terraform_remote_state" "database" {
+  backend = "s3"
+
+  config = {
+    bucket = "mikah-terraform-state-2026"
+    key    = "project5/database/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
 
 module "vpc" {
   source = "../../modules/vpc"
@@ -85,4 +98,6 @@ module "alb_asg" {
   min_size = var.min_size
 
   max_size = var.max_size
+
+  db_secret_arn = data.terraform_remote_state.database.outputs.primary_secret_arn
 }
